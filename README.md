@@ -107,4 +107,13 @@ Output: `dist/bebird Viewer.exe` — single portable executable.
 
 ## License
 
-This project is licensed under the GNU General Public License v3.0. See [LICENSE](LICENSE) for details.
+This project is licensed under the GNU General Public License v3.0.
+
+You are free to:
+
+    Use, study, and modify the code
+    Distribute copies or modified versions under the same license
+
+However, any software derived from this project must also be open source under the GPLv3 terms.
+
+See the full license here: https://www.gnu.org/licenses/gpl-3.0.en.html
