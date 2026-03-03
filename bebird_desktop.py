@@ -116,6 +116,7 @@ class StreamWorker(QThread):
             except socket.timeout:
                 send_triggers(sock)
 
+        sock.sendto(b'\x20\x37', (DEVICE_IP, DEVICE_PORT))
         sock.close()
 
     def stop(self) -> None:
@@ -266,8 +267,8 @@ class MainWindow(QMainWindow):
         self._lbl_stats.setText(f"Frames: {shown}   Dropped: {dropped}")
 
     def closeEvent(self, event) -> None:
-        if self._worker:
-            self._worker.stop()
+        if self._worker and self._worker.isRunning():
+            self._toggle_stream()
         super().closeEvent(event)
 
 
