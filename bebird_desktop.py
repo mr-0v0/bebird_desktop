@@ -164,6 +164,7 @@ class MainWindow(QMainWindow):
         self._worker: StreamWorker | None = None
         self._save_dir: Path | None = None
         self._save_frame_count = 0
+        self._circle_view = False
 
         # ── Layout ──────────────────────────────────────────────────────────
         central = QWidget()
@@ -205,6 +206,14 @@ class MainWindow(QMainWindow):
         self._lbl_save_path = QLabel("")
         self._lbl_save_path.setStyleSheet(style_info)
         bar.addWidget(self._lbl_save_path)
+
+        bar.addSpacing(12)
+
+        self._btn_circle = QPushButton("Circle View: Off")
+        self._btn_circle.setFixedWidth(130)
+        self._btn_circle.setStyleSheet(style_btn)
+        self._btn_circle.clicked.connect(self._toggle_circle)
+        bar.addWidget(self._btn_circle)
 
         bar.addStretch()
 
@@ -249,9 +258,31 @@ class MainWindow(QMainWindow):
         self._btn_save.setText("Start Saving")
         self._lbl_save_path.setText("")
 
+    # ── Circle crop ───────────────────────────────────────────────────────────
+
+    def _toggle_circle(self) -> None:
+        self._circle_view = not self._circle_view
+        self._btn_circle.setText(
+            "Circle View: On" if self._circle_view else "Circle View: Off"
+        )
+
+    def _apply_circle_crop(self, arr: np.ndarray) -> np.ndarray:
+        """Black out pixels outside the largest inscribed circle."""
+        h, w = arr.shape[:2]
+        cx, cy = w // 2, h // 2
+        r = min(cx, cy)
+        y_idx, x_idx = np.ogrid[:h, :w]
+        outside = (x_idx - cx) ** 2 + (y_idx - cy) ** 2 > r * r
+        result = arr.copy()
+        result[outside] = 0
+        return result
+
     # ── Frame handling ────────────────────────────────────────────────────────
 
     def _on_frame(self, arr: np.ndarray) -> None:
+        if self._circle_view:
+            arr = self._apply_circle_crop(arr)
+
         if self._save_dir is not None:
             bgr = cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
             cv2.imwrite(
