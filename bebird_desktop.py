@@ -12,7 +12,7 @@ from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtGui import QImage, QPixmap
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QLabel,
-    QVBoxLayout, QHBoxLayout, QPushButton, QSizePolicy,
+    QVBoxLayout, QHBoxLayout, QPushButton, QComboBox, QSizePolicy,
 )
 
 ImageFile.LOAD_TRUNCATED_IMAGES = True
@@ -27,6 +27,12 @@ def parse_header(data: bytes) -> tuple[int, int, int]:
     return data[0], data[1], data[2]   # frame_id, is_last, frag_idx
 
 
+def decode_roll(flag: int, low_byte: int, tenths: bool) -> float:
+    if tenths and flag != 15:
+        return ((flag << 8) + low_byte) / 10.0
+    return float(low_byte + (256 if flag == 2 else 0))
+
+
 def send_triggers(sock: socket.socket) -> None:
     sock.sendto(b'\x20\x37', (DEVICE_IP, DEVICE_PORT))
     sock.sendto(b'\x20\x36', (DEVICE_IP, DEVICE_PORT))
@@ -36,7 +42,7 @@ def send_triggers(sock: socket.socket) -> None:
 # Background streaming thread
 # ---------------------------------------------------------------------------
 class StreamWorker(QThread):
-    frame_ready   = Signal(np.ndarray)   # RGB frame
+    frame_ready   = Signal(np.ndarray, int, int)   # RGB frame, final flag, roll low byte
     stats_updated = Signal(int, int)     # shown, dropped
 
     def __init__(self):
@@ -95,7 +101,7 @@ class StreamWorker(QThread):
                             img.verify()
                             img = Image.open(BytesIO(frame_buf))
                             arr = np.array(img)
-                            self.frame_ready.emit(arr)
+                            self.frame_ready.emit(arr, is_last, data[3])
                             shown += 1
                             self.stats_updated.emit(shown, dropped)
                         except Exception:
@@ -215,6 +221,16 @@ class MainWindow(QMainWindow):
         self._btn_circle.clicked.connect(self._toggle_circle)
         bar.addWidget(self._btn_circle)
 
+        self._roll_mode = QComboBox()
+        self._roll_mode.addItem("Auto-Level: Off", None)
+        self._roll_mode.addItem("Auto-Level: Standard", False)
+        self._roll_mode.addItem("Auto-Level: Alternate", True)
+        self._roll_mode.setToolTip(
+            "Keep the picture upright using the camera's roll sensor. "
+            "Use Alternate if Standard does not track the camera correctly."
+        )
+        bar.addWidget(self._roll_mode)
+
         bar.addStretch()
 
         self._lbl_stats = QLabel("Frames: —   Dropped: —")
@@ -279,7 +295,16 @@ class MainWindow(QMainWindow):
 
     # ── Frame handling ────────────────────────────────────────────────────────
 
-    def _on_frame(self, arr: np.ndarray) -> None:
+    def _on_frame(self, arr: np.ndarray, flag: int, roll_low: int) -> None:
+        tenths = self._roll_mode.currentData()
+        if tenths is not None:
+            roll = decode_roll(flag, roll_low, tenths) % 360
+            if roll:
+                h, w = arr.shape[:2]
+                center = ((w - 1) / 2, (h - 1) / 2)
+                rotation = cv2.getRotationMatrix2D(center, -roll, 1.0)
+                arr = cv2.warpAffine(arr, rotation, (w, h))
+
         if self._circle_view:
             arr = self._apply_circle_crop(arr)
 
